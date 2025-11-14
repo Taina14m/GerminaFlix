@@ -1,0 +1,119 @@
+body{
+    padding: 0;
+    margin: 0;
+    top: 0;
+    font-family:'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+    background-color: black;
+    overflow-x: hidden;
+}
+h4{
+    color: white;
+    text-align: center;
+    
+}
+h2{
+    color: white;
+    text-align: center;
+}
+h1{
+    color: #FFB6FF;
+    text-align: center;
+}
+#subtitle{
+    margin-top: 50px;
+}
+header{
+    background-color: purple;
+    color: white;
+    display: flex;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    padding-left: 2vw;
+    z-index: 2;
+    align-items: center;
+    height: 8.6vh;
+    justify-content: space-between;
+}
+#titulo{
+    display: flex;
+    align-items: center;
+    gap: 1vw;
+}
+#sobre{
+    color: white;
+    text-decoration: none;
+    margin-right: 4vw;
+    font-size: 1.1vw;
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+}
+#sobre:hover {
+    color: #ffb6ff;
+    text-shadow: 0 0 2px #ffb6ff;
+  }
+table{
+    margin-top: 5vw;
+    width: 100%;
+}
+main{
+    margin-top: 8vw;
+}
+tr{
+    width: 100%;
+    display: flex;
+    justify-content: space-evenly;
+    text-align: left;
+}
+.film {
+    border-radius: 15px;
+    height: 40vh;
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
+    cursor: pointer;
+    position: relative;
+    z-index: 1;
+  }
+  
+  /* Container para efeito do filme */
+  td {
+    position: relative;
+    text-align: center;
+    color: white;
+    width: 16vw;
+  }
+  
+  /* Informações que aparecem no hover */
+  td h4 {
+    opacity: 0;
+    transform: translateY(1vw);
+    transition: all 0.4s ease;
+  }
+  
+  /* Quando passar o mouse */
+  td:hover .film {
+    transform: scale(1.05);
+    box-shadow: 0 0 3vw rgba(233, 156, 255, 0.4);
+  }
+  
+  /* Mostra as informações */
+  td:hover h4 {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  
+  /* Animação mais suave e destaque do link */
+  td h4 a {
+    color: #ffb6ff;
+    text-decoration: none;
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+  }
+  
+  td h4 a:hover {
+    color: #ffffff;
+    text-shadow: 0 0 10px #ffb6ff;
+  }
+footer{
+    width: 100%;
+    height: 40px;
+    margin: 0 auto;
+    background-color: palevioletred;
+}
