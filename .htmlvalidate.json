@@ -1,0 +1,11 @@
+{
+  "extends": ["html-validate:recommended"],
+  "rules": {
+    "wcag/h30": "warn",
+    "wcag/h37": "warn",
+    "attribute-allowed-values": "warn",
+    "no-trailing-whitespace": "off",
+    "prefer-tbody": "off",
+    "no-deprecated-attr": "warn"
+  }
+}

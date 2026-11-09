@@ -1,0 +1,110 @@
+name: CI/CD GerminaFlix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------
+  # CI: roda em todo push e pull_request para a main
+  # ---------------------------------------------------------------
+  ci:
+    name: CI - validar e testar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do projeto
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificar links e validar HTML
+        run: npm test
+
+      - name: Build da imagem Docker
+        run: docker build --build-arg GIT_SHA=${{ github.sha }} -t germinaflix:ci .
+
+      - name: Teste do container (smoke test)
+        run: |
+          docker run -d --name germinaflix -p 8080:80 germinaflix:ci
+          sleep 3
+          for pagina in / /index.html /sobre.html /resenha1.html /resenha2.html /version.txt; do
+            status=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:8080$pagina")
+            echo "$pagina -> $status"
+            if [ "$status" != "200" ]; then
+              docker logs germinaflix
+              exit 1
+            fi
+          done
+          docker rm -f germinaflix
+
+  # ---------------------------------------------------------------
+  # CD: só em push na main e só se a CI passou
+  # ---------------------------------------------------------------
+  cd:
+    name: CD - publicar e fazer deploy
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout do projeto
+        uses: actions/checkout@v4
+
+      - name: Definir nome da imagem (GHCR exige minúsculas)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          build-args: GIT_SHA=${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Disparar deploy no Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::error::Secret RENDER_DEPLOY_HOOK_URL não configurado."
+            exit 1
+          fi
+          curl -fsS -G "$RENDER_DEPLOY_HOOK_URL" \
+            --data-urlencode "imgURL=${IMAGE}:${{ github.sha }}"
+
+      - name: Verificar versão publicada
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          echo "Aguardando ${APP_URL} servir o commit ${GITHUB_SHA}..."
+          for i in $(seq 1 30); do
+            publicado=$(curl -fsS "${APP_URL}/version.txt" 2>/dev/null || true)
+            if [ "$publicado" = "$GITHUB_SHA" ]; then
+              echo "✓ Versão ${GITHUB_SHA} no ar em ${APP_URL}"
+              exit 0
+            fi
+            echo "Tentativa $i: versão publicada = '${publicado:-sem resposta}'"
+            sleep 20
+          done
+          echo "::error::A nova versão não apareceu em ${APP_URL} em 10 minutos."
+          exit 1
