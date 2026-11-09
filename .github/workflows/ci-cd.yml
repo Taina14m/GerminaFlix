@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Evita dois deploys simultâneos no Pages
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # ---------------------------------------------------------------
   # CI: roda em todo push e pull_request para a main
@@ -15,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do projeto
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Configurar Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -50,29 +55,34 @@ jobs:
   # CD: só em push na main e só se a CI passou
   # ---------------------------------------------------------------
   cd:
-    name: CD - publicar e fazer deploy
+    name: CD - publicar imagem e site
     needs: ci
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - name: Checkout do projeto
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Definir nome da imagem (GHCR exige minúsculas)
         run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: Login no GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build e push da imagem
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -81,30 +91,36 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
 
-      - name: Disparar deploy no Render
-        env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      - name: Extrair o site de dentro da imagem publicada
         run: |
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::error::Secret RENDER_DEPLOY_HOOK_URL não configurado."
-            exit 1
-          fi
-          curl -fsS -G "$RENDER_DEPLOY_HOOK_URL" \
-            --data-urlencode "imgURL=${IMAGE}:${{ github.sha }}"
+          docker pull "${IMAGE}:${GITHUB_SHA}"
+          id=$(docker create "${IMAGE}:${GITHUB_SHA}")
+          docker cp "$id:/usr/share/nginx/html" ./site
+          docker rm "$id"
+          ls -la site
+
+      - name: Enviar site para o GitHub Pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - name: Deploy no GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v5
 
       - name: Verificar versão publicada
         env:
-          APP_URL: ${{ vars.APP_URL }}
+          APP_URL: ${{ steps.deploy.outputs.page_url }}
         run: |
           echo "Aguardando ${APP_URL} servir o commit ${GITHUB_SHA}..."
-          for i in $(seq 1 30); do
-            publicado=$(curl -fsS "${APP_URL}/version.txt" 2>/dev/null || true)
+          for i in $(seq 1 20); do
+            publicado=$(curl -fsS "${APP_URL}version.txt?nocache=$i" 2>/dev/null || true)
             if [ "$publicado" = "$GITHUB_SHA" ]; then
               echo "✓ Versão ${GITHUB_SHA} no ar em ${APP_URL}"
               exit 0
             fi
             echo "Tentativa $i: versão publicada = '${publicado:-sem resposta}'"
-            sleep 20
+            sleep 15
           done
-          echo "::error::A nova versão não apareceu em ${APP_URL} em 10 minutos."
+          echo "::error::A nova versão não apareceu em ${APP_URL} em 5 minutos."
           exit 1
